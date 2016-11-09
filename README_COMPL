@@ -1,0 +1,23 @@
+O conteudo de proj02compl.zip deve ser descompactado dentro do diretório proj02.
+
+As instâncias foram complementadas nos subdiretórios:
+in02
+in03 
+in04
+
+Para testar seu programa nestas instâncias basta executar:
+./run02.sh
+./run03.sh
+./run04.sh
+ou
+./runverbose02.sh
+./runverbose03.sh
+./runverbose04.sh
+
+Os resultados serão salvos em:
+out02
+out03
+out04
+
+Na avaliação, seu programa não necessariamente será testado com todas essas 
+intâncias de entrada: algumas poderão ser removidas e outras adicionadas.

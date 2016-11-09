@@ -1,0 +1,9 @@
+Siga as instruções do arquivo README em 
+http://www.ic.unicamp.br/~fkm/codes/connectivity.tgz. 
+Dentre outras coisas, você será instruído a: 
+- Instalar GUROBI, LEMON e GraphViz; e 
+- Corrigir o leitor de pdf.
+Os programas de teste não estão presentes no proj02, mas você pode testá-los
+em connectivity, caso queria.
+
+Também há exemplos de uso do GUROBI e do LEMON em connectivity.
