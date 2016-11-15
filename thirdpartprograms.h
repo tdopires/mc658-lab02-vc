@@ -9,11 +9,11 @@
 // <PDF_READER> file.pdf
 //
 // ------- let uncommented exactly one of the following lines
-// #define PDF_VIEWER "open"    // To open pdf file in MAC OS
+#define PDF_VIEWER "open"    // To open pdf file in MAC OS
 // #define PDF_VIEWER "evince"  // To open pdf file in Linux
 // #define PDF_VIEWER "xpdf"    // To open pdf file in Linux
 // #define PDF_VIEWER "okular"  // To open pdf file in Linux
-#define PDF_VIEWER "ok"  // To open pdf file in Linux
+// #define PDF_VIEWER "ok"  // To open pdf file in Linux
 //=================================================================================
 
 #endif

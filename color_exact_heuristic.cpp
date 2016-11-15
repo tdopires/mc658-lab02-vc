@@ -30,10 +30,10 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 		vector<GRBVar> y(gd.n);
 		ListGraph::NodeMap< vector<GRBVar> > x(gd.g, vector<GRBVar>(gd.n));
 
-		for(int k = 0; k < gd.n; k++) {
+		for (int k = 0; k < gd.n; k++) {
 			y[k] = model.addVar(0.0, 1.0, 1.0, GRB_BINARY, "y_" + to_string(k));
 
-			for(NodeIt v(gd.g); v != INVALID; ++v) {
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
 				x[v][k] = model.addVar(0.0, 1.0, 1.0, GRB_BINARY, "x_" + gd.vname[v] + "," + to_string(k));
 			}
 		}
@@ -41,7 +41,7 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 
 		for (NodeIt v(gd.g); v != INVALID; ++v) {
 			GRBLinExpr expr = 0;
-			for(int k = 0; k < gd.n; k++){
+			for (int k = 0; k < gd.n; k++){
 				expr += x[v][k];
 			}
 			model.addConstr(expr == 1.0);
@@ -52,28 +52,42 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 			Node u = gd.g.u(e);
 			Node v = gd.g.v(e);
 			
-			for(int k = 0; k < gd.n; k++){
+			for (int k = 0; k < gd.n; k++){
 				model.addConstr(x[u][k] + x[v][k] <= y[k]);
 			}
 		}
 		model.update();
 
-		GRBLinExpr exprObj = 0;
-		for (int k = 0; k < gd.n; k++) {
-			exprObj += y[k];
+		for (int k = 0; k < gd.n; k++){
+			if (k + 1 < gd.n)
+				model.addConstr(y[k + 1] <= y[k]);
 		}
-		model.setObjective(exprObj, GRB_MINIMIZE);
 		model.update();
 
-		if (timeLimit > 0) model.getEnv().set(GRB_DoubleParam_TimeLimit, timeLimit);
+		GRBLinExpr total_k = 0;
+		for (int k = 0; k < gd.n; k++) {
+			total_k += y[k];
+		}
+		model.setObjective(total_k, GRB_MINIMIZE);
+		model.update();
+
+		if (timeLimit > 0) 
+			model.getEnv().set(GRB_DoubleParam_TimeLimit, timeLimit);
 
 		model.optimize();
 
 		double k_total = 0.0;
-		for(int k = 0; k < gd.n; k++) {			
+		for (int k = 0; k < gd.n; k++) {
 			
 			if (BinaryIsOne(y[k].get(GRB_DoubleAttr_X))) 
 				k_total += 1.0;
+		}
+
+		for (int k = 0; k < gd.n; k++) {
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
+				if (BinaryIsOne(x[v][k].get(GRB_DoubleAttr_X))) 
+					color[v] = k + 1;
+			}
 		}
 
 		int status = model.get(GRB_IntAttr_Status);
