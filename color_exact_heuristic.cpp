@@ -60,7 +60,15 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 
 		for (int k = 0; k < gd.n; k++){
 			if (k + 1 < gd.n)
-				model.addConstr(y[k + 1] <= y[k]);
+				for (int j = 0; j < (k + 1); j++) {
+					model.addConstr(y[k + 1] <= y[j]);
+				}
+
+			GRBLinExpr expr = 0;
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
+				expr += x[v][k];
+			}
+			model.addConstr(expr >= y[k]);
 		}
 		model.update();
 
@@ -78,7 +86,6 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 
 		double k_total = 0.0;
 		for (int k = 0; k < gd.n; k++) {
-			
 			if (BinaryIsOne(y[k].get(GRB_DoubleAttr_X))) 
 				k_total += 1.0;
 		}
