@@ -15,9 +15,10 @@
 #include "mygraphlib.h"
 #include <gurobi_c++.h>
 #include "color_exact_heuristic.h"
+#include <deque>
 
-int colorNaive(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBound, int timeLimit);
-
+//------------------------------------------------------------------------------
+// Auxiliar Functions for heuristic used for Cutoff on Exact Algorithm
 int saturationDegree(GraphData& gd, NodeIntMap& color, Node v) {
 	int degree = 0;
 	for (IncEdgeIt e(gd.g,v); e != INVALID; ++e) {
@@ -64,7 +65,7 @@ int colorVertex(GraphData& gd, NodeIntMap& color, Node v) {
 }
 
 int calculateHeuristicCutoff(GraphData& gd) {
-	NodeIntMap color(gd.g);  
+	NodeIntMap color(gd.g);	
 	for (NodeIt v(gd.g); v != INVALID; ++v) {
 		color[v] = 0;
 	}
@@ -107,13 +108,8 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
  * ENTRETANTO, NÃO ALTERE A ASSINATURA DA FUNÇÃO. */
 {
 	try {
-		//int seed = 1;
-		//srand48(seed);
-
 		GRBEnv env = GRBEnv();
 		GRBModel model = GRBModel(env);
-		//model.getEnv().set(GRB_IntParam_LazyConstraints, 1);
-  		//model.getEnv().set(GRB_IntParam_Seed, seed);
 
 		vector<GRBVar> y(gd.n);
 		ListGraph::NodeMap< vector<GRBVar> > x(gd.g, vector<GRBVar>(gd.n));
@@ -147,12 +143,7 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 		model.update();
 
 		
-		for (int k = 0; k < gd.n; k++){
-			//if (k + 1 < gd.n)
-				//model.addConstr(y[k + 1] <= y[k]);
-				//for (int j = 0; j < (k + 1); j++) {
-				//	model.addConstr(y[k + 1] <= y[j]);
-				//}
+		for (int k = 0; k < gd.n; k++) {
 
 			GRBLinExpr expr = 0;
 			for (NodeIt v(gd.g); v != INVALID; ++v) {
@@ -212,28 +203,142 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 	}
 
 }
+
+
+
 //------------------------------------------------------------------------------
 int colorHeuristic(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBound, int timeLimit)
 /* SUBSTITUA O CONTEÚDO DESTA FUNÇÃO POR SUA IMPLEMENTAÇÃO DA HEURISTICA.
  * ENTRETANTO, NÃO ALTERE A ASSINATURA DA FUNÇÃO. */
 {
-	return colorNaive(gd, color, lowerBound, upperBound, timeLimit);
-}
-//------------------------------------------------------------------------------
-int colorNaive(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBound, int timeLimit)
-/* Algoritmo ingênuo para o problema de coloração de vértices */
-{
-	lowerBound = 1;
-	int next = lowerBound;
-	
-	for(NodeIt i(gd.g); i != INVALID; ++i){
-		color[i] = next;
-		next++;
+	try {
+		GRBEnv env = GRBEnv();
+		GRBModel model = GRBModel(env);
+
+		vector<GRBVar> y(gd.n);
+		ListGraph::NodeMap< vector<GRBVar> > x(gd.g, vector<GRBVar>(gd.n));
+
+		for (int k = 0; k < gd.n; k++) {
+			y[k] = model.addVar(0.0, 1.0, 1.0, GRB_CONTINUOUS, "y_" + to_string(k));
+
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
+				x[v][k] = model.addVar(0.0, 1.0, 1.0, GRB_CONTINUOUS, "x_" + gd.vname[v] + "," + to_string(k));
+			}
+		}
+		model.update();
+
+		for (NodeIt v(gd.g); v != INVALID; ++v) {
+			GRBLinExpr expr = 0;
+			for (int k = 0; k < gd.n; k++){
+				expr += x[v][k];
+			}
+			model.addConstr(expr == 1.0);
+		}
+		model.update();
+
+		for (EdgeIt e(gd.g); e != INVALID; ++e) {
+			Node u = gd.g.u(e);
+			Node v = gd.g.v(e);
+			
+			for (int k = 0; k < gd.n; k++){
+				model.addConstr(x[u][k] + x[v][k] <= y[k]);
+			}
+		}
+		model.update();
+
+		
+		for (int k = 0; k < gd.n; k++){
+
+			GRBLinExpr expr = 0;
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
+				expr += x[v][k];
+			}
+			model.addConstr(expr >= y[k]);
+		}
+		model.update();
+		
+
+		GRBLinExpr total_k = 0;
+		for (int k = 0; k < gd.n; k++) {
+			total_k += y[k];
+		}
+		model.setObjective(total_k, GRB_MINIMIZE);
+		model.update();
+
+		model.optimize();
+
+		deque<GRBVar*> intvars;
+		GRBVar* modelvars = model.getVars();
+		for (int j = 0; j < model.get(GRB_IntAttr_NumVars); ++j) {
+			intvars.push_back(&modelvars[j]);
+	    }
+
+
+		for (int iter = 0; iter < 1000; ++iter) {
+
+			deque<GRBVar*> fractional;
+			for (size_t j = 0; j < intvars.size(); ++j) {
+				if (NonBinary(intvars[j]->get(GRB_DoubleAttr_X))) {
+					fractional.push_back(intvars[j]);
+				}
+			}
+
+			if (fractional.size() == 0)
+				break;
+
+			bool isFeasible = false;
+			do {
+
+				double fractional_val = (*fractional.begin())->get(GRB_DoubleAttr_X);
+				if (fractional_val > 0.5) {
+					(*fractional.begin())->set(GRB_DoubleAttr_LB, 1.0);
+					(*fractional.begin())->set(GRB_DoubleAttr_UB, 1.0);
+				} else {
+					(*fractional.begin())->set(GRB_DoubleAttr_LB, 0.0);
+					(*fractional.begin())->set(GRB_DoubleAttr_UB, 0.0);
+				}
+
+				model.optimize();
+
+				int status = model.get(GRB_IntAttr_Status);
+				if (status == GRB_OPTIMAL)
+					isFeasible = true;
+				else
+					fractional.pop_front();
+
+			} while (!isFeasible);
+			
+		}
+
+		double k_total = 0.0;
+		vector<int> newColors = vector<int>(gd.n, 0);
+		for (int k = 0; k < gd.n; k++) {
+			if (BinaryIsOne(y[k].get(GRB_DoubleAttr_X))) {
+				k_total += 1.0;
+				newColors[k] = k_total;
+			}
+		}
+
+		for (int k = 0; k < gd.n; k++) {
+			for (NodeIt v(gd.g); v != INVALID; ++v) {
+				if (BinaryIsOne(x[v][k].get(GRB_DoubleAttr_X))) 
+					color[v] = newColors[k];
+			}
+		}
+
+		upperBound = model.get(GRB_DoubleAttr_ObjVal);
+		lowerBound = model.get(GRB_DoubleAttr_MinBound);
+		
+		if (upperBound == lowerBound) {
+			return 1;
+		}
+		return 0;
+
+	} catch(GRBException e) {
+		cerr << "[GRBException] Code: "<< e.getErrorCode() << " getMessage: " << e.getMessage() << endl;
+		exit(0);
 	}
-	next--;
-	upperBound = next;
-	
-	return 0;
+
 }
 //------------------------------------------------------------------------------
 
