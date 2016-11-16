@@ -18,14 +18,102 @@
 
 int colorNaive(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBound, int timeLimit);
 
+int saturationDegree(GraphData& gd, NodeIntMap& color, Node v) {
+	int degree = 0;
+	for (IncEdgeIt e(gd.g,v); e != INVALID; ++e) {
+		Node eu = gd.g.u(e);
+		Node ev = gd.g.v(e);
+
+		Node adj = (eu == v) ? ev : eu;
+
+		if (color[adj] != 0)
+			degree++;
+	}
+	return degree;
+}
+
+int vertexDegree(GraphData& gd, Node v) {
+	int degree = 0;
+	for (IncEdgeIt e(gd.g,v); e != INVALID; ++e)
+		degree++;
+	return degree;
+}
+
+int colorVertex(GraphData& gd, NodeIntMap& color, Node v) {
+	int vcolor = 1;
+	bool isColorUsed = false;
+	do {
+		isColorUsed = false;
+		for (IncEdgeIt e(gd.g,v); e != INVALID; ++e) {
+			Node eu = gd.g.u(e);
+			Node ev = gd.g.v(e);
+
+			Node adj = (eu == v) ? ev : eu;
+
+			if (color[adj] == vcolor) {
+				isColorUsed = true;
+				vcolor++;
+				continue;
+			}
+		}	
+	} while (isColorUsed);
+
+	color[v] = vcolor;
+
+	return vcolor;
+}
+
+int calculateHeuristicCutoff(GraphData& gd) {
+	NodeIntMap color(gd.g);  
+	for (NodeIt v(gd.g); v != INVALID; ++v) {
+		color[v] = 0;
+	}
+
+	int noOfColoredNodes = 0;
+	while (noOfColoredNodes < gd.n) {
+		
+		int max = -1;
+		Node target;
+		for (NodeIt v(gd.g); v != INVALID; ++v) {
+			if (color[v] == 0) {
+				int d = saturationDegree(gd, color, v);
+
+				if (d > max) {
+					max = d;
+					target = v;
+				}
+				if (d == max)
+					if (vertexDegree(gd, v) > vertexDegree(gd, target))
+						target = v;
+			}
+		}
+		colorVertex(gd, color, target);
+		noOfColoredNodes++;
+	}
+
+	int maxColor = 0;
+	for (NodeIt v(gd.g); v != INVALID; ++v) {
+		if (color[v] > maxColor) {
+			maxColor = color[v];
+		}
+	}
+
+	return maxColor;
+}
+
 //------------------------------------------------------------------------------
 int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBound, int timeLimit)
 /* SUBSTITUA O CONTEÚDO DESTA FUNÇÃO POR SUA IMPLEMENTAÇÃO DO ALGORITMO EXATO.
  * ENTRETANTO, NÃO ALTERE A ASSINATURA DA FUNÇÃO. */
 {
 	try {
+		//int seed = 1;
+		//srand48(seed);
+
 		GRBEnv env = GRBEnv();
 		GRBModel model = GRBModel(env);
+		//model.getEnv().set(GRB_IntParam_LazyConstraints, 1);
+  		//model.getEnv().set(GRB_IntParam_Seed, seed);
 
 		vector<GRBVar> y(gd.n);
 		ListGraph::NodeMap< vector<GRBVar> > x(gd.g, vector<GRBVar>(gd.n));
@@ -58,11 +146,13 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 		}
 		model.update();
 
+		
 		for (int k = 0; k < gd.n; k++){
-			if (k + 1 < gd.n)
-				for (int j = 0; j < (k + 1); j++) {
-					model.addConstr(y[k + 1] <= y[j]);
-				}
+			//if (k + 1 < gd.n)
+				//model.addConstr(y[k + 1] <= y[k]);
+				//for (int j = 0; j < (k + 1); j++) {
+				//	model.addConstr(y[k + 1] <= y[j]);
+				//}
 
 			GRBLinExpr expr = 0;
 			for (NodeIt v(gd.g); v != INVALID; ++v) {
@@ -71,6 +161,7 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 			model.addConstr(expr >= y[k]);
 		}
 		model.update();
+		
 
 		GRBLinExpr total_k = 0;
 		for (int k = 0; k < gd.n; k++) {
@@ -82,18 +173,25 @@ int colorExact(GraphData& gd, NodeIntMap& color, int& lowerBound, int& upperBoun
 		if (timeLimit > 0) 
 			model.getEnv().set(GRB_DoubleParam_TimeLimit, timeLimit);
 
+		double cutoff = calculateHeuristicCutoff(gd);
+		if (cutoff > 0)
+			model.getEnv().set(GRB_DoubleParam_Cutoff, cutoff + 0.1);
+
 		model.optimize();
 
 		double k_total = 0.0;
+		vector<int> newColors = vector<int>(gd.n, 0);
 		for (int k = 0; k < gd.n; k++) {
-			if (BinaryIsOne(y[k].get(GRB_DoubleAttr_X))) 
+			if (BinaryIsOne(y[k].get(GRB_DoubleAttr_X))) {
 				k_total += 1.0;
+				newColors[k] = k_total;
+			}
 		}
 
 		for (int k = 0; k < gd.n; k++) {
 			for (NodeIt v(gd.g); v != INVALID; ++v) {
 				if (BinaryIsOne(x[v][k].get(GRB_DoubleAttr_X))) 
-					color[v] = k + 1;
+					color[v] = newColors[k];
 			}
 		}
 
